@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import bcrypt from 'bcryptjs';
-import { User, UserStatus } from './entities/user.entity.js';
+import { User, UserStatus, PlatformRole } from './entities/user.entity.js';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto.js';
 
 @Injectable()
@@ -18,6 +18,7 @@ export class UsersService {
         id: true,
         name: true,
         email: true,
+        role: true,
         status: true,
         emailVerifiedAt: true,
         createdAt: true,
@@ -26,7 +27,7 @@ export class UsersService {
       order: { createdAt: 'DESC' },
     });
     return {
-      message: 'Berhasil mengambil daftar user/customer',
+      message: 'Berhasil mengambil daftar user/customer/admin',
       data: users,
     };
   }
@@ -38,6 +39,7 @@ export class UsersService {
         id: true,
         name: true,
         email: true,
+        role: true,
         status: true,
         emailVerifiedAt: true,
         createdAt: true,
@@ -66,6 +68,7 @@ export class UsersService {
       name: dto.name,
       email: dto.email,
       passwordHash,
+      role: dto.role || PlatformRole.USER,
       status: dto.status || UserStatus.ACTIVE,
     });
 
@@ -77,6 +80,7 @@ export class UsersService {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
         status: user.status,
       },
     };
@@ -90,6 +94,7 @@ export class UsersService {
 
     if (dto.name) user.name = dto.name;
     if (dto.email) user.email = dto.email;
+    if (dto.role) user.role = dto.role;
     if (dto.status) user.status = dto.status;
 
     await this.userRepository.save(user);
@@ -100,6 +105,7 @@ export class UsersService {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
         status: user.status,
       },
     };

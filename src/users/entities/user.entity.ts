@@ -1,9 +1,15 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 export enum UserStatus {
   ACTIVE = 'ACTIVE',
   SUSPENDED = 'SUSPENDED',
   BANNED = 'BANNED',
+}
+
+export enum PlatformRole {
+  USER = 'USER',
+  ADMIN = 'ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
 }
 
 @Entity('users')
@@ -19,6 +25,13 @@ export class User {
 
   @Column({ type: 'varchar', length: 255, name: 'password_hash' })
   passwordHash: string;
+
+  @Column({
+    type: 'enum',
+    enum: PlatformRole,
+    default: PlatformRole.USER,
+  })
+  role: PlatformRole;
 
   @Column({
     type: 'enum',
