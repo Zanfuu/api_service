@@ -115,12 +115,12 @@ export class BusinessesService {
     const placeIdToSync = dto?.googlePlaceId || business.googlePlaceId || `ChIJ_${business.slug}_pancoran_id`;
     const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
 
-    // 🏬 SIMULASI DETAIL PROFIL NYATA (BILA SLUG TERDAPAT "PANCORAN" ATAU "TRANSGO")
+    // 🏬 SIMULASI DETAIL PROFIL NYATA (DENGAN NO TELP TRANSGO PANCORAN 081389292879)
     let googleData = {
       address: business.slug.includes('pancoran') || business.name.toLowerCase().includes('pancoran')
         ? `Gedung ILP, Jl. Raya Pasar Minggu No.39A Lt 4, RT.8/RW.9, Pancoran, Kec. Pancoran, Kota Jakarta Selatan, Daerah Khusus Ibukota Jakarta 12780`
         : `Jl. Transgo No. 88, Kota Bandung, Jawa Barat`,
-      phone: `+62 21-7919-2000`,
+      phone: `081389292879`,
       website: `https://${business.slug}.katamereka.id`,
       googleRating: 4.90,
       googleUserRatingsTotal: 342,
