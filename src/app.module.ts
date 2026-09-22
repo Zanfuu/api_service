@@ -29,7 +29,7 @@ import { BusinessesModule } from './businesses/businesses.module.js';
         password: configService.get<string>('DATABASE_PASSWORD') || 'bismillah_transgo_emas',
         database: configService.get<string>('DATABASE_NAME') || 'katamereka_db',
         entities: [User, Business, BusinessMember],
-        synchronize: true, // Otomatis sync tabel ke DB PostgreSQL remote
+        synchronize: true, // Kembali normal tanpa dropSchema
       }),
     }),
     AuthModule,
