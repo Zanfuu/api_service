@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessesService } from './businesses.service.js';
-import { CreateBusinessDto, UpdateBusinessDto, AddBusinessMemberDto } from './dto/business.dto.js';
+import { CreateBusinessDto, UpdateBusinessDto, AddBusinessMemberDto, SyncGoogleBusinessDto } from './dto/business.dto.js';
 
 @Controller('businesses')
 @UseGuards(AuthGuard('jwt'))
@@ -26,6 +26,11 @@ export class BusinessesController {
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateBusinessDto) {
     return this.businessesService.update(id, dto);
+  }
+
+  @Post(':id/sync-google')
+  async syncGoogleBusiness(@Param('id') id: string, @Body() dto: SyncGoogleBusinessDto) {
+    return this.businessesService.syncGoogleBusiness(id, dto);
   }
 
   @Post(':id/members')

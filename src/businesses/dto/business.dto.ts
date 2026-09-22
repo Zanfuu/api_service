@@ -12,6 +12,10 @@ export class CreateBusinessDto {
   slug: string;
 
   @IsOptional()
+  @IsString()
+  googlePlaceId?: string;
+
+  @IsOptional()
   @IsEnum(BusinessStatus)
   status?: BusinessStatus;
 }
@@ -26,8 +30,18 @@ export class UpdateBusinessDto {
   slug?: string;
 
   @IsOptional()
+  @IsString()
+  googlePlaceId?: string;
+
+  @IsOptional()
   @IsEnum(BusinessStatus)
   status?: BusinessStatus;
+}
+
+export class SyncGoogleBusinessDto {
+  @IsOptional()
+  @IsString()
+  googlePlaceId?: string;
 }
 
 export class AddBusinessMemberDto {
