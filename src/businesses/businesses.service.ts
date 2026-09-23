@@ -1,13 +1,19 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Business, BusinessStatus } from './entities/business.entity.js';
 import { BusinessMember, BusinessRole } from './entities/business-member.entity.js';
 import { User } from '../users/entities/user.entity.js';
 import { CreateBusinessDto, UpdateBusinessDto, AddBusinessMemberDto, SyncGoogleBusinessDto } from './dto/business.dto.js';
+import { SyncBusinessesDto } from './dto/sync-businesses.dto.js';
+import { GetBusinessesQueryDto } from './dto/get-businesses-query.dto.js';
+import { ProviderService } from '../provider/provider.service.js';
+import { NormalizedGeoapifyBusiness } from '../provider/interfaces/normalized-geoapify-business.interface.js';
 
 @Injectable()
 export class BusinessesService {
+  private readonly logger = new Logger(BusinessesService.name);
+
   constructor(
     @InjectRepository(Business)
     private readonly businessRepository: Repository<Business>,
@@ -15,7 +21,222 @@ export class BusinessesService {
     private readonly memberRepository: Repository<BusinessMember>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly providerService: ProviderService,
   ) {}
+
+  async syncBusinesses(dto: SyncBusinessesDto) {
+    this.logger.log(`Memulai Sync Business dari Provider dengan Keyword: "${dto.keyword}", Location: "${dto.location}"`);
+
+    // 1. Ambil data dari provider eksternal (Geoapify)
+    const normalizedItems = await this.providerService.searchBusinesses(dto.keyword, dto.location);
+    const fetched = normalizedItems.length;
+
+    let inserted = 0;
+    let updated = 0;
+    let failed = 0;
+
+    // 2. Loop & UPSERT ke PostgreSQL
+    for (const item of normalizedItems) {
+      try {
+        const result = await this.upsertBusiness(item);
+        if (result === 'inserted') {
+          inserted++;
+        } else if (result === 'updated') {
+          updated++;
+        }
+      } catch (err) {
+        this.logger.error(`Gagal upsert bisnis "${item.name}":`, err);
+        failed++;
+      }
+    }
+
+    return {
+      success: true,
+      fetched,
+      inserted,
+      updated,
+      failed,
+    };
+  }
+
+  async upsertBusiness(item: NormalizedGeoapifyBusiness): Promise<'inserted' | 'updated'> {
+    let existing: Business | null = null;
+
+    // Prioritas 1: Cari berdasarkan external_source & external_id (Unique Constraint)
+    if (item.externalId) {
+      existing = await this.businessRepository.findOne({
+        where: { externalSource: item.externalSource, externalId: item.externalId },
+      });
+    }
+
+    // Prioritas 2 (Fallback): Cari berdasarkan slug
+    if (!existing && item.slug) {
+      existing = await this.businessRepository.findOne({ where: { slug: item.slug } });
+    }
+
+    if (existing) {
+      // UPDATE POLICY: Hanya perbarui data eksternal, TIDAK MENIMPA id internal atau slug custom
+      existing.name = item.name;
+      if (item.externalId) existing.externalId = item.externalId;
+      if (item.address) existing.address = item.address;
+      if (item.city) existing.city = item.city;
+      if (item.province) existing.province = item.province;
+      if (item.country) existing.country = item.country;
+      if (item.postalCode) existing.postalCode = item.postalCode;
+      if (item.latitude !== null) existing.latitude = item.latitude;
+      if (item.longitude !== null) existing.longitude = item.longitude;
+      if (item.phone) existing.phone = item.phone;
+      if (item.email) existing.email = item.email;
+      if (item.website) existing.website = item.website;
+      if (item.category) existing.category = item.category;
+      if (item.categories) existing.categories = item.categories;
+      if (item.externalRating !== null) existing.externalRating = item.externalRating;
+      if (item.externalReviewsCount !== null) existing.externalReviewsCount = item.externalReviewsCount;
+      existing.externalSyncedAt = item.externalSyncedAt;
+
+      await this.businessRepository.save(existing);
+      return 'updated';
+    } else {
+      // INSERT POLICY: Buat record bisnis baru dengan slug unik
+      let uniqueSlug = item.slug;
+      const slugCount = await this.businessRepository.count({ where: { slug: item.slug } });
+      if (slugCount > 0) {
+        uniqueSlug = `${item.slug}-${Date.now().toString().slice(-4)}`;
+      }
+
+      const newBusiness = this.businessRepository.create({
+        name: item.name,
+        slug: uniqueSlug,
+        externalSource: item.externalSource,
+        externalId: item.externalId,
+        address: item.address,
+        city: item.city,
+        province: item.province,
+        country: item.country,
+        postalCode: item.postalCode,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        phone: item.phone,
+        email: item.email,
+        website: item.website,
+        category: item.category,
+        categories: item.categories,
+        externalRating: item.externalRating,
+        externalReviewsCount: item.externalReviewsCount,
+        status: BusinessStatus.ACTIVE,
+        externalSyncedAt: item.externalSyncedAt,
+      });
+
+      await this.businessRepository.save(newBusiness);
+      return 'inserted';
+    }
+  }
+
+  async findAll(query: GetBusinessesQueryDto) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const queryBuilder = this.businessRepository.createQueryBuilder('b');
+
+    if (query.search) {
+      queryBuilder.andWhere('(b.name ILIKE :search OR b.address ILIKE :search)', {
+        search: `%${query.search}%`,
+      });
+    }
+
+    if (query.city) {
+      queryBuilder.andWhere('b.city ILIKE :city', { city: `%${query.city}%` });
+    }
+
+    if (query.province) {
+      queryBuilder.andWhere('b.province ILIKE :province', { province: `%${query.province}%` });
+    }
+
+    if (query.category) {
+      queryBuilder.andWhere('b.category ILIKE :category', { category: `%${query.category}%` });
+    }
+
+    queryBuilder.orderBy('b.createdAt', 'DESC');
+    queryBuilder.skip(skip).take(limit);
+
+    const [items, total] = await queryBuilder.getManyAndCount();
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: items.map((b) => ({
+        id: b.id,
+        name: b.name,
+        slug: b.slug,
+        address: b.address,
+        city: b.city,
+        province: b.province,
+        category: b.category,
+        rating: b.externalRating,
+        reviews_count: b.externalReviewsCount,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        total_pages: totalPages,
+      },
+    };
+  }
+
+  async findOne(id: string) {
+    const business = await this.businessRepository.findOne({ where: { id } });
+    if (!business) {
+      throw new NotFoundException('Bisnis tidak ditemukan');
+    }
+
+    const members = await this.memberRepository.find({
+      where: { businessId: id },
+      relations: { user: true },
+    });
+
+    return {
+      message: 'Berhasil mengambil detail bisnis dari PostgreSQL',
+      data: {
+        ...business,
+        members: members.map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          name: m.user?.name,
+          email: m.user?.email,
+          role: m.role,
+          createdAt: m.createdAt,
+        })),
+      },
+    };
+  }
+
+  async findBySlug(slug: string) {
+    const business = await this.businessRepository.findOne({ where: { slug } });
+    if (!business) {
+      throw new NotFoundException('Bisnis dengan slug ini tidak ditemukan');
+    }
+
+    const members = await this.memberRepository.find({
+      where: { businessId: business.id },
+      relations: { user: true },
+    });
+
+    return {
+      message: 'Berhasil mengambil detail bisnis berdasarkan slug dari PostgreSQL',
+      data: {
+        ...business,
+        members: members.map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          name: m.user?.name,
+          email: m.user?.email,
+          role: m.role,
+          createdAt: m.createdAt,
+        })),
+      },
+    };
+  }
 
   async create(ownerUserId: string, dto: CreateBusinessDto) {
     const existingSlug = await this.businessRepository.findOne({ where: { slug: dto.slug } });
@@ -26,13 +247,12 @@ export class BusinessesService {
     const business = this.businessRepository.create({
       name: dto.name,
       slug: dto.slug,
-      googlePlaceId: dto.googlePlaceId || null,
+      externalId: dto.googlePlaceId || null,
       status: dto.status || BusinessStatus.ACTIVE,
     });
 
     await this.businessRepository.save(business);
 
-    // Otomatis jadikan pendaftar sebagai OWNER
     const member = this.memberRepository.create({
       businessId: business.id,
       userId: ownerUserId,
@@ -48,45 +268,6 @@ export class BusinessesService {
     };
   }
 
-  async findAll() {
-    const businesses = await this.businessRepository.find({
-      order: { createdAt: 'DESC' },
-    });
-    return {
-      message: 'Berhasil mengambil daftar bisnis (GET dari Database lokal)',
-      data: businesses,
-    };
-  }
-
-  async findOne(id: string) {
-    const business = await this.businessRepository.findOne({ where: { id } });
-    if (!business) {
-      throw new NotFoundException('Bisnis tidak ditemukan');
-    }
-
-    const members = await this.memberRepository.find({
-      where: { businessId: id },
-      relations: {
-        user: true,
-      },
-    });
-
-    return {
-      message: 'Berhasil mengambil detail bisnis (GET dari Database lokal)',
-      data: {
-        ...business,
-        members: members.map((m) => ({
-          id: m.id,
-          userId: m.userId,
-          name: m.user?.name,
-          email: m.user?.email,
-          role: m.role,
-          createdAt: m.createdAt,
-        })),
-      },
-    };
-  }
-
   async update(id: string, dto: UpdateBusinessDto) {
     const business = await this.businessRepository.findOne({ where: { id } });
     if (!business) {
@@ -95,107 +276,13 @@ export class BusinessesService {
 
     if (dto.name) business.name = dto.name;
     if (dto.slug) business.slug = dto.slug;
-    if (dto.googlePlaceId !== undefined) business.googlePlaceId = dto.googlePlaceId;
+    if (dto.googlePlaceId !== undefined) business.externalId = dto.googlePlaceId;
     if (dto.status) business.status = dto.status;
 
     await this.businessRepository.save(business);
 
     return {
       message: 'Data bisnis berhasil diperbarui',
-      data: business,
-    };
-  }
-
-  async syncGoogleBusiness(id: string, dto?: SyncGoogleBusinessDto) {
-    const business = await this.businessRepository.findOne({ where: { id } });
-    if (!business) {
-      throw new NotFoundException('Bisnis tidak ditemukan');
-    }
-
-    const placeIdToSync = dto?.googlePlaceId || business.googlePlaceId || `ChIJ_${business.slug}_pancoran_id`;
-    const dataForSeoApiKey = process.env.DATAFORSEO_API_KEY;
-    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
-
-    // 🏬 DEFAULT DATA PROFIL NYATA (TRANSGO PANCORAN)
-    let businessData = {
-      address: business.slug.includes('pancoran') || business.name.toLowerCase().includes('pancoran')
-        ? `Gedung ILP, Jl. Raya Pasar Minggu No.39A Lt 4, RT.8/RW.9, Pancoran, Kec. Pancoran, Kota Jakarta Selatan, Daerah Khusus Ibukota Jakarta 12780`
-        : `Jl. Transgo No. 88, Kota Bandung, Jawa Barat`,
-      phone: `081389292879`,
-      website: `https://${business.slug}.katamereka.id`,
-      googleRating: 4.90,
-      googleUserRatingsTotal: 342,
-    };
-
-    // 🌐 OPTION 1: INTEGRASI VIA DATAFORSEO API (SERP Google Maps API)
-    if (dataForSeoApiKey) {
-      try {
-        const response = await fetch('https://api.dataforseo.com/v3/serp/google/maps/live/advanced', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${Buffer.from(dataForSeoApiKey).toString('base64')}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify([
-            {
-              keyword: business.name,
-              location_code: 2360, // Indonesia
-              language_code: 'id',
-            },
-          ]),
-        });
-        const result = await response.json();
-        const item = result?.tasks?.[0]?.result?.[0]?.items?.[0];
-        if (item) {
-          businessData = {
-            address: item.address || businessData.address,
-            phone: item.phone || businessData.phone,
-            website: item.url || businessData.website,
-            googleRating: item.rating?.value || businessData.googleRating,
-            googleUserRatingsTotal: item.rating?.votes_count || businessData.googleUserRatingsTotal,
-          };
-        }
-      } catch (error) {
-        console.warn('Gagal memanggil DataForSEO API, menggunakan fallback sync data.', error);
-      }
-    } 
-    // 🌐 OPTION 2: INTEGRASI VIA GOOGLE PLACES API ASLI
-    else if (googleApiKey) {
-      try {
-        const response = await fetch(
-          `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeIdToSync}&fields=formatted_address,formatted_phone_number,website,rating,user_ratings_total&key=${googleApiKey}`,
-        );
-        const result = await response.json();
-        if (result.result) {
-          businessData = {
-            address: result.result.formatted_address || businessData.address,
-            phone: result.result.formatted_phone_number || businessData.phone,
-            website: result.result.website || businessData.website,
-            googleRating: result.result.rating || businessData.googleRating,
-            googleUserRatingsTotal: result.result.user_ratings_total || businessData.googleUserRatingsTotal,
-          };
-        }
-      } catch (error) {
-        console.warn('Gagal memanggil Google API asli, menggunakan fallback sync data.', error);
-      }
-    }
-
-    business.googlePlaceId = placeIdToSync;
-    business.address = businessData.address;
-    business.phone = businessData.phone;
-    business.website = businessData.website;
-    business.googleRating = businessData.googleRating;
-    business.googleUserRatingsTotal = businessData.googleUserRatingsTotal;
-    business.lastSyncedAt = new Date();
-
-    await this.businessRepository.save(business);
-
-    return {
-      message: dataForSeoApiKey
-        ? 'Berhasil SINKRONISASI (SYNC) data profil bisnis ASLI dari DataForSEO API (Google Maps SERP)'
-        : googleApiKey
-        ? 'Berhasil SINKRONISASI (SYNC) data profil ASLI dari Google Business Places API'
-        : 'Berhasil SINKRONISASI (SYNC) data profil dari DataForSEO / Google Business API (Mode Integration Ready)',
       data: business,
     };
   }

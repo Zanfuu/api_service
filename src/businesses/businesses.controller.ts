@@ -1,39 +1,48 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessesService } from './businesses.service.js';
 import { CreateBusinessDto, UpdateBusinessDto, AddBusinessMemberDto, SyncGoogleBusinessDto } from './dto/business.dto.js';
+import { SyncBusinessesDto } from './dto/sync-businesses.dto.js';
+import { GetBusinessesQueryDto } from './dto/get-businesses-query.dto.js';
 
-@Controller('businesses')
-@UseGuards(AuthGuard('jwt'))
+@Controller()
 export class BusinessesController {
   constructor(private readonly businessesService: BusinessesService) {}
 
-  @Post()
-  async create(@Request() req: any, @Body() dto: CreateBusinessDto) {
-    return this.businessesService.create(req.user.id, dto);
+  @Post('internal/businesses/sync')
+  async syncInternal(@Body() dto: SyncBusinessesDto) {
+    return this.businessesService.syncBusinesses(dto);
   }
 
-  @Get()
-  async findAll() {
-    return this.businessesService.findAll();
+  @Get('businesses')
+  async findAll(@Query() query: GetBusinessesQueryDto) {
+    return this.businessesService.findAll(query);
   }
 
-  @Get(':id')
+  @Get('businesses/slug/:slug')
+  async findBySlug(@Param('slug') slug: string) {
+    return this.businessesService.findBySlug(slug);
+  }
+
+  @Get('businesses/:id')
   async findOne(@Param('id') id: string) {
     return this.businessesService.findOne(id);
   }
 
-  @Patch(':id')
+  @UseGuards(AuthGuard('jwt'))
+  @Post('businesses')
+  async create(@Request() req: any, @Body() dto: CreateBusinessDto) {
+    return this.businessesService.create(req.user.id, dto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('businesses/:id')
   async update(@Param('id') id: string, @Body() dto: UpdateBusinessDto) {
     return this.businessesService.update(id, dto);
   }
 
-  @Post(':id/sync-google')
-  async syncGoogleBusiness(@Param('id') id: string, @Body() dto: SyncGoogleBusinessDto) {
-    return this.businessesService.syncGoogleBusiness(id, dto);
-  }
-
-  @Post(':id/members')
+  @UseGuards(AuthGuard('jwt'))
+  @Post('businesses/:id/members')
   async addMember(@Param('id') id: string, @Body() dto: AddBusinessMemberDto) {
     return this.businessesService.addMember(id, dto);
   }

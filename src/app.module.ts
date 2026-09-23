@@ -6,12 +6,14 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
 import { User } from './users/entities/user.entity.js';
+import { OtpCode } from './auth/entities/otp-code.entity.js';
 import { Business } from './businesses/entities/business.entity.js';
 import { BusinessMember } from './businesses/entities/business-member.entity.js';
 
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
 import { BusinessesModule } from './businesses/businesses.module.js';
+import { DataForSeoModule } from './dataforseo/dataforseo.module.js';
 
 @Module({
   imports: [
@@ -28,13 +30,14 @@ import { BusinessesModule } from './businesses/businesses.module.js';
         username: configService.get<string>('DATABASE_USER') || 'postgres',
         password: configService.get<string>('DATABASE_PASSWORD') || 'bismillah_transgo_emas',
         database: configService.get<string>('DATABASE_NAME') || 'katamereka_db',
-        entities: [User, Business, BusinessMember],
-        synchronize: true, // Kembali normal tanpa dropSchema
+        entities: [User, OtpCode, Business, BusinessMember],
+        synchronize: true,
       }),
     }),
     AuthModule,
     UsersModule,
     BusinessesModule,
+    DataForSeoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

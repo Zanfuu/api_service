@@ -5,13 +5,15 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { User } from '../users/entities/user.entity.js';
+import { OtpCode } from './entities/otp-code.entity.js';
 import { AuthService } from './auth.service.js';
+import { MailService } from './mail.service.js';
 import { AuthController } from './auth.controller.js';
 import { JwtStrategy } from './jwt.strategy.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, OtpCode]),
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -25,7 +27,7 @@ import { JwtStrategy } from './jwt.strategy.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [AuthService, MailService, JwtStrategy],
+  exports: [AuthService, MailService],
 })
 export class AuthModule {}
