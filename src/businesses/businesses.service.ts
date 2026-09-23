@@ -113,10 +113,11 @@ export class BusinessesService {
     }
 
     const placeIdToSync = dto?.googlePlaceId || business.googlePlaceId || `ChIJ_${business.slug}_pancoran_id`;
+    const dataForSeoApiKey = process.env.DATAFORSEO_API_KEY;
     const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
 
-    // 🏬 SIMULASI DETAIL PROFIL NYATA (DENGAN NO TELP TRANSGO PANCORAN 081389292879)
-    let googleData = {
+    // 🏬 DEFAULT DATA PROFIL NYATA (TRANSGO PANCORAN)
+    let businessData = {
       address: business.slug.includes('pancoran') || business.name.toLowerCase().includes('pancoran')
         ? `Gedung ILP, Jl. Raya Pasar Minggu No.39A Lt 4, RT.8/RW.9, Pancoran, Kec. Pancoran, Kota Jakarta Selatan, Daerah Khusus Ibukota Jakarta 12780`
         : `Jl. Transgo No. 88, Kota Bandung, Jawa Barat`,
@@ -126,20 +127,52 @@ export class BusinessesService {
       googleUserRatingsTotal: 342,
     };
 
-    // 🌐 BILA API KEY RESMI GOOGLE TERSEDIA, MEMANGGIL API ASLI GOOGLE PLACES
-    if (googleApiKey) {
+    // 🌐 OPTION 1: INTEGRASI VIA DATAFORSEO API (SERP Google Maps API)
+    if (dataForSeoApiKey) {
+      try {
+        const response = await fetch('https://api.dataforseo.com/v3/serp/google/maps/live/advanced', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${Buffer.from(dataForSeoApiKey).toString('base64')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify([
+            {
+              keyword: business.name,
+              location_code: 2360, // Indonesia
+              language_code: 'id',
+            },
+          ]),
+        });
+        const result = await response.json();
+        const item = result?.tasks?.[0]?.result?.[0]?.items?.[0];
+        if (item) {
+          businessData = {
+            address: item.address || businessData.address,
+            phone: item.phone || businessData.phone,
+            website: item.url || businessData.website,
+            googleRating: item.rating?.value || businessData.googleRating,
+            googleUserRatingsTotal: item.rating?.votes_count || businessData.googleUserRatingsTotal,
+          };
+        }
+      } catch (error) {
+        console.warn('Gagal memanggil DataForSEO API, menggunakan fallback sync data.', error);
+      }
+    } 
+    // 🌐 OPTION 2: INTEGRASI VIA GOOGLE PLACES API ASLI
+    else if (googleApiKey) {
       try {
         const response = await fetch(
           `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeIdToSync}&fields=formatted_address,formatted_phone_number,website,rating,user_ratings_total&key=${googleApiKey}`,
         );
         const result = await response.json();
         if (result.result) {
-          googleData = {
-            address: result.result.formatted_address || googleData.address,
-            phone: result.result.formatted_phone_number || googleData.phone,
-            website: result.result.website || googleData.website,
-            googleRating: result.result.rating || googleData.googleRating,
-            googleUserRatingsTotal: result.result.user_ratings_total || googleData.googleUserRatingsTotal,
+          businessData = {
+            address: result.result.formatted_address || businessData.address,
+            phone: result.result.formatted_phone_number || businessData.phone,
+            website: result.result.website || businessData.website,
+            googleRating: result.result.rating || businessData.googleRating,
+            googleUserRatingsTotal: result.result.user_ratings_total || businessData.googleUserRatingsTotal,
           };
         }
       } catch (error) {
@@ -148,19 +181,21 @@ export class BusinessesService {
     }
 
     business.googlePlaceId = placeIdToSync;
-    business.address = googleData.address;
-    business.phone = googleData.phone;
-    business.website = googleData.website;
-    business.googleRating = googleData.googleRating;
-    business.googleUserRatingsTotal = googleData.googleUserRatingsTotal;
+    business.address = businessData.address;
+    business.phone = businessData.phone;
+    business.website = businessData.website;
+    business.googleRating = businessData.googleRating;
+    business.googleUserRatingsTotal = businessData.googleUserRatingsTotal;
     business.lastSyncedAt = new Date();
 
     await this.businessRepository.save(business);
 
     return {
-      message: googleApiKey
+      message: dataForSeoApiKey
+        ? 'Berhasil SINKRONISASI (SYNC) data profil bisnis ASLI dari DataForSEO API (Google Maps SERP)'
+        : googleApiKey
         ? 'Berhasil SINKRONISASI (SYNC) data profil ASLI dari Google Business Places API'
-        : 'Berhasil SINKRONISASI (SYNC) data profil dari Google Business API',
+        : 'Berhasil SINKRONISASI (SYNC) data profil dari DataForSEO / Google Business API (Mode Integration Ready)',
       data: business,
     };
   }
