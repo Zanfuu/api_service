@@ -71,6 +71,12 @@ export class Business {
   @Column({ type: 'int', nullable: true, name: 'external_reviews_count' })
   externalReviewsCount: number | null;
 
+  @Column({ type: 'decimal', precision: 3, scale: 2, nullable: true, name: 'average_rating' })
+  averageRating: number | null;
+
+  @Column({ type: 'int', default: 0, name: 'review_count' })
+  reviewCount: number;
+
   @Column({
     type: 'enum',
     enum: BusinessStatus,
