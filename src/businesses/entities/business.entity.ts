@@ -3,6 +3,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 export enum BusinessStatus {
   PENDING = 'PENDING',
   ACTIVE = 'ACTIVE',
+  CLAIMED = 'CLAIMED',
   SUSPENDED = 'SUSPENDED',
   INACTIVE = 'INACTIVE',
 }
@@ -12,6 +13,9 @@ export enum BusinessStatus {
 export class Business {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'boolean', default: false, name: 'is_claimed' })
+  isClaimed: boolean;
 
   @Column({ type: 'varchar', length: 255 })
   name: string;

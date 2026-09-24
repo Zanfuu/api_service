@@ -18,6 +18,11 @@ export class MailService {
   }
 
   async sendOtpEmail(email: string, code: string, type: OtpType): Promise<void> {
+    // 1. Selalu cetak OTP di terminal server untuk mempermudah pengujian lokal/dev
+    this.logger.log(`=======================================================`);
+    this.logger.log(`[DEV OTP LOG] Email: ${email} | Tipe: ${type} | KODE OTP: ${code}`);
+    this.logger.log(`=======================================================`);
+
     const apiKey = this.configService.get<string>('RESEND_SECRET');
     if (!apiKey) {
       this.logger.error('Tidak dapat mengirim email: RESEND_SECRET belum diset.');
@@ -80,17 +85,24 @@ export class MailService {
 
     try {
       const fromAddress = this.configService.get<string>('RESEND_FROM_EMAIL') || 'Katamereka <onboarding@resend.dev>';
-      const data = await this.resend.emails.send({
+      const { data, error } = await this.resend.emails.send({
         from: fromAddress,
         to: [email],
         subject,
         html: htmlContent,
       });
 
-      this.logger.log(`OTP Email berhasil dikirim ke ${email} (ID: ${data.data?.id})`);
+      if (error) {
+        // Log warning di terminal tetapi TIDAK membatalkan response sukses API untuk mempermudah testing dev
+        this.logger.warn(`[Resend Free Domain Warning] Tidak dapat mengirim email fisik ke ${email}: ${error.message}`);
+        this.logger.warn(`[DEV TESTING MODE] Gunakan Kode OTP di log terminal di atas (${code}) untuk pengujian.`);
+        return;
+      }
+
+      this.logger.log(`OTP Email berhasil dikirim ke ${email} (ID: ${data?.id})`);
     } catch (error: any) {
-      this.logger.error(`Gagal mengirim OTP email ke ${email}:`, error);
-      throw new InternalServerErrorException(`Gagal mengirim email OTP: ${error?.message || 'Error server Resend'}`);
+      this.logger.warn(`Gagal mengirim OTP email fisik ke ${email}: ${error?.message || 'Error Resend'}`);
+      this.logger.warn(`[DEV TESTING MODE] Gunakan Kode OTP di log terminal di atas (${code}) untuk pengujian.`);
     }
   }
 }

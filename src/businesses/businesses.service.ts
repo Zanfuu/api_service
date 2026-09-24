@@ -184,7 +184,23 @@ export class BusinessesService {
     };
   }
 
-  async findOne(id: string) {
+  async getMyBusinesses(userId: string) {
+    const memberships = await this.memberRepository.find({
+      where: { userId },
+      relations: { business: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    return memberships.map((m) => ({
+      id: m.business?.id,
+      name: m.business?.name,
+      slug: m.business?.slug,
+      role: m.role,
+      is_claimed: m.business?.isClaimed || false,
+    }));
+  }
+
+  async findOne(id: string, currentUserId?: string) {
     const business = await this.businessRepository.findOne({ where: { id } });
     if (!business) {
       throw new NotFoundException('Bisnis tidak ditemukan');
@@ -195,10 +211,25 @@ export class BusinessesService {
       relations: { user: true },
     });
 
+    const hasOwner = members.some((m) => m.role === BusinessRole.OWNER);
+    const isClaimed = business.isClaimed || hasOwner;
+    const claimAvailable = !isClaimed;
+
+    let myRole: string | null = null;
+    if (currentUserId) {
+      const myMembership = members.find((m) => m.userId === currentUserId);
+      if (myMembership) {
+        myRole = myMembership.role;
+      }
+    }
+
     return {
       message: 'Berhasil mengambil detail bisnis dari PostgreSQL',
       data: {
         ...business,
+        is_claimed: isClaimed,
+        claim_available: claimAvailable,
+        ...(myRole ? { my_role: myRole } : {}),
         members: members.map((m) => ({
           id: m.id,
           userId: m.userId,
@@ -211,7 +242,7 @@ export class BusinessesService {
     };
   }
 
-  async findBySlug(slug: string) {
+  async findBySlug(slug: string, currentUserId?: string) {
     const business = await this.businessRepository.findOne({ where: { slug } });
     if (!business) {
       throw new NotFoundException('Bisnis dengan slug ini tidak ditemukan');
@@ -222,10 +253,25 @@ export class BusinessesService {
       relations: { user: true },
     });
 
+    const hasOwner = members.some((m) => m.role === BusinessRole.OWNER);
+    const isClaimed = business.isClaimed || hasOwner;
+    const claimAvailable = !isClaimed;
+
+    let myRole: string | null = null;
+    if (currentUserId) {
+      const myMembership = members.find((m) => m.userId === currentUserId);
+      if (myMembership) {
+        myRole = myMembership.role;
+      }
+    }
+
     return {
       message: 'Berhasil mengambil detail bisnis berdasarkan slug dari PostgreSQL',
       data: {
         ...business,
+        is_claimed: isClaimed,
+        claim_available: claimAvailable,
+        ...(myRole ? { my_role: myRole } : {}),
         members: members.map((m) => ({
           id: m.id,
           userId: m.userId,

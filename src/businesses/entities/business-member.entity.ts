@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { User } from '../../users/entities/user.entity.js';
 import { Business } from '../../businesses/entities/business.entity.js';
 
@@ -9,6 +9,7 @@ export enum BusinessRole {
 }
 
 @Entity('business_members')
+@Unique(['businessId', 'userId'])
 export class BusinessMember {
   @PrimaryGeneratedColumn('uuid')
   id: string;

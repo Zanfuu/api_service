@@ -4,6 +4,7 @@ import { BusinessesService } from './businesses.service.js';
 import { CreateBusinessDto, UpdateBusinessDto, AddBusinessMemberDto, SyncGoogleBusinessDto } from './dto/business.dto.js';
 import { SyncBusinessesDto } from './dto/sync-businesses.dto.js';
 import { GetBusinessesQueryDto } from './dto/get-businesses-query.dto.js';
+import { BusinessMemberGuard } from '../business-claims/guards/business-member.guard.js';
 
 @Controller()
 export class BusinessesController {
@@ -17,6 +18,23 @@ export class BusinessesController {
   @Get('businesses')
   async findAll(@Query() query: GetBusinessesQueryDto) {
     return this.businessesService.findAll(query);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('my-businesses')
+  async getMyBusinesses(@Request() req: any) {
+    return this.businessesService.getMyBusinesses(req.user.id);
+  }
+
+  @UseGuards(AuthGuard('jwt'), BusinessMemberGuard)
+  @Get('businesses/:businessId/dashboard')
+  async getDashboard(@Request() req: any, @Param('businessId') businessId: string) {
+    const business = await this.businessesService.findOne(businessId, req.user.id);
+    return {
+      message: 'Selamat datang di Business Dashboard Katamereka',
+      role: req.businessMember?.role,
+      business: business.data,
+    };
   }
 
   @Get('businesses/slug/:slug')
