@@ -19,6 +19,7 @@ import { BusinessesModule } from './businesses/businesses.module.js';
 import { BusinessClaimsModule } from './business-claims/business-claims.module.js';
 import { ReviewsModule } from './reviews/reviews.module.js';
 import { DataForSeoModule } from './dataforseo/dataforseo.module.js';
+import { AdminManagementModule } from './admin-management/admin-management.module.js';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { DataForSeoModule } from './dataforseo/dataforseo.module.js';
     BusinessClaimsModule,
     ReviewsModule,
     DataForSeoModule,
+    AdminManagementModule,
   ],
   controllers: [AppController],
   providers: [AppService],

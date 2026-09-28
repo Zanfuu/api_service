@@ -156,6 +156,9 @@ export class AuthService {
       throw new UnauthorizedException('Akun Anda sedang dinonaktifkan atau dibanned');
     }
 
+    user.lastLoginAt = new Date();
+    await this.userRepository.save(user);
+
     const token = this.generateToken(user.id, user.email);
 
     return {

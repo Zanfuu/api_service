@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 
 export enum UserStatus {
   ACTIVE = 'ACTIVE',
+  PENDING = 'PENDING',
   SUSPENDED = 'SUSPENDED',
   BANNED = 'BANNED',
 }
@@ -42,6 +43,9 @@ export class User {
 
   @Column({ type: 'timestamp', nullable: true, name: 'email_verified_at' })
   emailVerifiedAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true, name: 'last_login_at' })
+  lastLoginAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
