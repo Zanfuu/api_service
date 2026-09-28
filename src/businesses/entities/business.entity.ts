@@ -84,6 +84,27 @@ export class Business {
   })
   status: BusinessStatus;
 
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
+
+  @Column({ type: 'text', nullable: true, name: 'logo_url' })
+  logoUrl: string | null;
+
+  @Column({ type: 'text', nullable: true, name: 'cover_url' })
+  coverUrl: string | null;
+
+  @Column({ type: 'jsonb', nullable: true, name: 'opening_hours' })
+  openingHours: Record<string, any> | null;
+
+  @Column({ type: 'jsonb', nullable: true, name: 'social_media' })
+  socialMedia: Record<string, any> | null;
+
+  @Column({ type: 'uuid', nullable: true, name: 'updated_by' })
+  updatedBy: string | null;
+
+  @Column({ type: 'timestamp', nullable: true, name: 'profile_completed_at' })
+  profileCompletedAt: Date | null;
+
   @Column({ type: 'timestamp', nullable: true, name: 'external_synced_at' })
   externalSyncedAt: Date | null;
 

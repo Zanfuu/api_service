@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, InternalServerErrorException, Logger } from '@nestjs/common';
+import 'multer';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Business, BusinessStatus } from './entities/business.entity.js';
@@ -9,6 +10,9 @@ import { SyncBusinessesDto } from './dto/sync-businesses.dto.js';
 import { GetBusinessesQueryDto } from './dto/get-businesses-query.dto.js';
 import { ProviderService } from '../provider/provider.service.js';
 import { NormalizedGeoapifyBusiness } from '../provider/interfaces/normalized-geoapify-business.interface.js';
+import { UpdateBusinessProfileDto } from './dto/update-business-profile.dto.js';
+import { calculateProfileCompletion } from './helpers/profile-completion.helper.js';
+import { StorageService } from './storage/storage.service.js';
 
 @Injectable()
 export class BusinessesService {
@@ -22,6 +26,7 @@ export class BusinessesService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly providerService: ProviderService,
+    private readonly storageService: StorageService,
   ) {}
 
   async syncBusinesses(dto: SyncBusinessesDto) {
@@ -75,24 +80,31 @@ export class BusinessesService {
     }
 
     if (existing) {
-      // UPDATE POLICY: Hanya perbarui data eksternal, TIDAK MENIMPA id internal atau slug custom
-      existing.name = item.name;
-      if (item.externalId) existing.externalId = item.externalId;
-      if (item.address) existing.address = item.address;
-      if (item.city) existing.city = item.city;
-      if (item.province) existing.province = item.province;
-      if (item.country) existing.country = item.country;
-      if (item.postalCode) existing.postalCode = item.postalCode;
-      if (item.latitude !== null) existing.latitude = item.latitude;
-      if (item.longitude !== null) existing.longitude = item.longitude;
-      if (item.phone) existing.phone = item.phone;
-      if (item.email) existing.email = item.email;
-      if (item.website) existing.website = item.website;
-      if (item.category) existing.category = item.category;
-      if (item.categories) existing.categories = item.categories;
-      if (item.externalRating !== null) existing.externalRating = item.externalRating;
-      if (item.externalReviewsCount !== null) existing.externalReviewsCount = item.externalReviewsCount;
-      existing.externalSyncedAt = item.externalSyncedAt;
+      // SOURCE OF TRUTH POLICY: Jika bisnis sudah diklaim, external sync TIDAK BOLEH menimpa data yang dikelola owner!
+      if (existing.isClaimed) {
+        if (item.externalId) existing.externalId = item.externalId;
+        if (item.externalRating !== null) existing.externalRating = item.externalRating;
+        if (item.externalReviewsCount !== null) existing.externalReviewsCount = item.externalReviewsCount;
+        existing.externalSyncedAt = item.externalSyncedAt;
+      } else {
+        existing.name = item.name;
+        if (item.externalId) existing.externalId = item.externalId;
+        if (item.address) existing.address = item.address;
+        if (item.city) existing.city = item.city;
+        if (item.province) existing.province = item.province;
+        if (item.country) existing.country = item.country;
+        if (item.postalCode) existing.postalCode = item.postalCode;
+        if (item.latitude !== null) existing.latitude = item.latitude;
+        if (item.longitude !== null) existing.longitude = item.longitude;
+        if (item.phone) existing.phone = item.phone;
+        if (item.email) existing.email = item.email;
+        if (item.website) existing.website = item.website;
+        if (item.category) existing.category = item.category;
+        if (item.categories) existing.categories = item.categories;
+        if (item.externalRating !== null) existing.externalRating = item.externalRating;
+        if (item.externalReviewsCount !== null) existing.externalReviewsCount = item.externalReviewsCount;
+        existing.externalSyncedAt = item.externalSyncedAt;
+      }
 
       await this.businessRepository.save(existing);
       return 'updated';
@@ -364,6 +376,221 @@ export class BusinessesService {
     return {
       message: 'Anggota berhasil ditambahkan ke bisnis',
       data: member,
+    };
+  }
+
+  async getManagedProfile(businessId: string) {
+    const business = await this.businessRepository.findOne({ where: { id: businessId } });
+    if (!business) {
+      throw new NotFoundException('Bisnis tidak ditemukan');
+    }
+
+    const completion = calculateProfileCompletion(business);
+
+    return {
+      success: true,
+      message: 'Berhasil mengambil profil manajemen bisnis',
+      data: {
+        id: business.id,
+        name: business.name,
+        slug: business.slug,
+        description: business.description,
+        phone: business.phone,
+        email: business.email,
+        website: business.website,
+        address: business.address,
+        city: business.city,
+        province: business.province,
+        postal_code: business.postalCode,
+        category: business.category,
+        categories: business.categories || [],
+        logo_url: business.logoUrl,
+        cover_url: business.coverUrl,
+        opening_hours: business.openingHours || {},
+        social_media: business.socialMedia || {},
+        latitude: business.latitude,
+        longitude: business.longitude,
+        profile_completion: completion.profile_completion,
+        profile_completed: completion.profile_completed,
+      },
+    };
+  }
+
+  async updateProfile(businessId: string, userId: string, dto: UpdateBusinessProfileDto) {
+    const business = await this.businessRepository.findOne({ where: { id: businessId } });
+    if (!business) {
+      throw new NotFoundException('Bisnis tidak ditemukan');
+    }
+
+    if (dto.name !== undefined) business.name = dto.name;
+    if (dto.description !== undefined) business.description = dto.description;
+    if (dto.phone !== undefined) business.phone = dto.phone;
+    if (dto.email !== undefined) business.email = dto.email;
+    if (dto.website !== undefined) business.website = dto.website;
+    if (dto.address !== undefined) business.address = dto.address;
+    if (dto.city !== undefined) business.city = dto.city;
+    if (dto.province !== undefined) business.province = dto.province;
+    if (dto.postal_code !== undefined) business.postalCode = dto.postal_code;
+    if (dto.category !== undefined) business.category = dto.category;
+    if (dto.opening_hours !== undefined) business.openingHours = dto.opening_hours;
+    if (dto.social_media !== undefined) business.socialMedia = dto.social_media;
+
+    business.updatedBy = userId;
+
+    const completion = calculateProfileCompletion(business);
+    if (completion.profile_completed && !business.profileCompletedAt) {
+      business.profileCompletedAt = new Date();
+    }
+
+    await this.businessRepository.save(business);
+
+    return {
+      success: true,
+      message: 'Profil bisnis berhasil diperbarui',
+      data: {
+        id: business.id,
+        name: business.name,
+        description: business.description,
+        phone: business.phone,
+        email: business.email,
+        website: business.website,
+        address: business.address,
+        city: business.city,
+        province: business.province,
+        postal_code: business.postalCode,
+        category: business.category,
+        logo_url: business.logoUrl,
+        cover_url: business.coverUrl,
+        opening_hours: business.openingHours || {},
+        social_media: business.socialMedia || {},
+        profile_completion: completion.profile_completion,
+        profile_completed: completion.profile_completed,
+      },
+    };
+  }
+
+  async uploadLogo(businessId: string, userId: string, file: Express.Multer.File) {
+    const business = await this.businessRepository.findOne({ where: { id: businessId } });
+    if (!business) {
+      throw new NotFoundException('Bisnis tidak ditemukan');
+    }
+
+    if (business.logoUrl) {
+      await this.storageService.deleteFile(business.logoUrl);
+    }
+
+    const fileUrl = await this.storageService.uploadFile(file, 'logos');
+    business.logoUrl = fileUrl;
+    business.updatedBy = userId;
+
+    const completion = calculateProfileCompletion(business);
+    if (completion.profile_completed && !business.profileCompletedAt) {
+      business.profileCompletedAt = new Date();
+    }
+
+    await this.businessRepository.save(business);
+
+    return {
+      success: true,
+      message: 'Logo bisnis berhasil diunggah',
+      data: {
+        logo_url: fileUrl,
+        profile_completion: completion.profile_completion,
+        profile_completed: completion.profile_completed,
+      },
+    };
+  }
+
+  async uploadCover(businessId: string, userId: string, file: Express.Multer.File) {
+    const business = await this.businessRepository.findOne({ where: { id: businessId } });
+    if (!business) {
+      throw new NotFoundException('Bisnis tidak ditemukan');
+    }
+
+    if (business.coverUrl) {
+      await this.storageService.deleteFile(business.coverUrl);
+    }
+
+    const fileUrl = await this.storageService.uploadFile(file, 'covers');
+    business.coverUrl = fileUrl;
+    business.updatedBy = userId;
+
+    await this.businessRepository.save(business);
+
+    return {
+      success: true,
+      message: 'Foto cover bisnis berhasil diunggah',
+      data: {
+        cover_url: fileUrl,
+      },
+    };
+  }
+
+  async deleteLogo(businessId: string, userId: string) {
+    const business = await this.businessRepository.findOne({ where: { id: businessId } });
+    if (!business) {
+      throw new NotFoundException('Bisnis tidak ditemukan');
+    }
+
+    if (business.logoUrl) {
+      await this.storageService.deleteFile(business.logoUrl);
+      business.logoUrl = null;
+      business.updatedBy = userId;
+      await this.businessRepository.save(business);
+    }
+
+    return {
+      success: true,
+      message: 'Logo bisnis berhasil dihapus',
+    };
+  }
+
+  async deleteCover(businessId: string, userId: string) {
+    const business = await this.businessRepository.findOne({ where: { id: businessId } });
+    if (!business) {
+      throw new NotFoundException('Bisnis tidak ditemukan');
+    }
+
+    if (business.coverUrl) {
+      await this.storageService.deleteFile(business.coverUrl);
+      business.coverUrl = null;
+      business.updatedBy = userId;
+      await this.businessRepository.save(business);
+    }
+
+    return {
+      success: true,
+      message: 'Foto cover bisnis berhasil dihapus',
+    };
+  }
+
+  async getPublicProfile(slug: string) {
+    const business = await this.businessRepository.findOne({ where: { slug } });
+    if (!business) {
+      throw new NotFoundException('Profil bisnis tidak ditemukan');
+    }
+
+    return {
+      success: true,
+      data: {
+        id: business.id,
+        slug: business.slug,
+        name: business.name,
+        description: business.description,
+        logo_url: business.logoUrl,
+        cover_url: business.coverUrl,
+        category: business.category,
+        address: business.address,
+        city: business.city,
+        province: business.province,
+        phone: business.phone,
+        email: business.email,
+        website: business.website,
+        opening_hours: business.openingHours || {},
+        social_media: business.socialMedia || {},
+        average_rating: business.averageRating ? parseFloat(business.averageRating.toString()) : 0,
+        review_count: business.reviewCount || 0,
+      },
     };
   }
 }
