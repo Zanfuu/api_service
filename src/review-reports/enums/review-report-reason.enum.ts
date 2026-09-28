@@ -1,0 +1,7 @@
+export enum ReviewReportReason {
+  SPAM = 'SPAM',
+  IRRELEVANT = 'IRRELEVANT',
+  INAPPROPRIATE = 'INAPPROPRIATE',
+  MISLEADING = 'MISLEADING',
+  OTHER = 'OTHER',
+}

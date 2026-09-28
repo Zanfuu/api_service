@@ -12,6 +12,7 @@ import { BusinessMember } from './businesses/entities/business-member.entity.js'
 import { BusinessClaim } from './business-claims/entities/business-claim.entity.js';
 import { Review } from './reviews/entities/review.entity.js';
 import { ReviewReply } from './reviews/entities/review-reply.entity.js';
+import { ReviewReport } from './review-reports/entities/review-report.entity.js';
 
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -20,6 +21,7 @@ import { BusinessClaimsModule } from './business-claims/business-claims.module.j
 import { ReviewsModule } from './reviews/reviews.module.js';
 import { DataForSeoModule } from './dataforseo/dataforseo.module.js';
 import { AdminManagementModule } from './admin-management/admin-management.module.js';
+import { ReviewReportsModule } from './review-reports/review-reports.module.js';
 
 @Module({
   imports: [
@@ -36,7 +38,7 @@ import { AdminManagementModule } from './admin-management/admin-management.modul
         username: configService.get<string>('DATABASE_USER') || 'postgres',
         password: configService.get<string>('DATABASE_PASSWORD') || 'bismillah_transgo_emas',
         database: configService.get<string>('DATABASE_NAME') || 'katamereka_db',
-        entities: [User, OtpCode, Business, BusinessMember, BusinessClaim, Review, ReviewReply],
+        entities: [User, OtpCode, Business, BusinessMember, BusinessClaim, Review, ReviewReply, ReviewReport],
         synchronize: true,
       }),
     }),
@@ -47,6 +49,7 @@ import { AdminManagementModule } from './admin-management/admin-management.modul
     ReviewsModule,
     DataForSeoModule,
     AdminManagementModule,
+    ReviewReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
