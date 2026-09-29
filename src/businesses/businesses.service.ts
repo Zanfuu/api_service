@@ -151,6 +151,13 @@ export class BusinessesService {
 
     const queryBuilder = this.businessRepository.createQueryBuilder('b');
 
+    // Public listing/search — only businesses visitors should actually see.
+    // (Previously unfiltered: PENDING/SUSPENDED/INACTIVE rows leaked into
+    // public search results and category/city pages built on top of it.)
+    queryBuilder.andWhere('b.status IN (:...publicStatuses)', {
+      publicStatuses: [BusinessStatus.ACTIVE, BusinessStatus.CLAIMED],
+    });
+
     if (query.search) {
       queryBuilder.andWhere(
         '(b.name ILIKE :search OR b.address ILIKE :search OR b.category ILIKE :search OR b.slug ILIKE :search OR b.categories::text ILIKE :search)',
@@ -196,6 +203,85 @@ export class BusinessesService {
         total,
         total_pages: totalPages,
       },
+    };
+  }
+
+  /**
+   * Lightweight, unpaginated feed of every public business slug + last
+   * update time — built for the FE sitemap generator so it doesn't have to
+   * page through the full `/businesses` listing (with all its unrelated
+   * fields) just to build <loc>/<lastmod> entries.
+   */
+  async getSitemapBusinesses() {
+    const businesses = await this.businessRepository
+      .createQueryBuilder('b')
+      .select(['b.slug', 'b.updatedAt'])
+      .where('b.status IN (:...publicStatuses)', {
+        publicStatuses: [BusinessStatus.ACTIVE, BusinessStatus.CLAIMED],
+      })
+      .andWhere('b.slug IS NOT NULL')
+      .orderBy('b.updatedAt', 'DESC')
+      .getMany();
+
+    return {
+      success: true,
+      data: businesses.map((b) => ({
+        slug: b.slug,
+        updated_at: b.updatedAt,
+      })),
+    };
+  }
+
+  /**
+   * Distinct `category` values actually in use by public businesses, with
+   * counts — lets the FE build /kategori/{slug} pages (and the sitemap)
+   * from real data instead of a hardcoded design-time list. Note: `category`
+   * stores the raw Geoapify taxonomy leaf (e.g. "catering.restaurant"), not
+   * an Indonesian display label — the FE is responsible for any display
+   * mapping/slugging.
+   */
+  async getCategoryFacets() {
+    const rows = await this.businessRepository
+      .createQueryBuilder('b')
+      .select('b.category', 'category')
+      .addSelect('COUNT(*)', 'count')
+      .where('b.status IN (:...publicStatuses)', {
+        publicStatuses: [BusinessStatus.ACTIVE, BusinessStatus.CLAIMED],
+      })
+      .andWhere('b.category IS NOT NULL')
+      .andWhere("b.category != ''")
+      .groupBy('b.category')
+      .orderBy('count', 'DESC')
+      .getRawMany<{ category: string; count: string }>();
+
+    return {
+      success: true,
+      data: rows.map((r) => ({ category: r.category, count: Number(r.count) })),
+    };
+  }
+
+  /**
+   * Distinct `city` values actually in use by public businesses, with
+   * counts — powers /lokasi/{slug} pages the same way getCategoryFacets
+   * powers /kategori/{slug}.
+   */
+  async getCityFacets() {
+    const rows = await this.businessRepository
+      .createQueryBuilder('b')
+      .select('b.city', 'city')
+      .addSelect('COUNT(*)', 'count')
+      .where('b.status IN (:...publicStatuses)', {
+        publicStatuses: [BusinessStatus.ACTIVE, BusinessStatus.CLAIMED],
+      })
+      .andWhere('b.city IS NOT NULL')
+      .andWhere("b.city != ''")
+      .groupBy('b.city')
+      .orderBy('count', 'DESC')
+      .getRawMany<{ city: string; count: string }>();
+
+    return {
+      success: true,
+      data: rows.map((r) => ({ city: r.city, count: Number(r.count) })),
     };
   }
 

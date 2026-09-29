@@ -150,6 +150,24 @@ export class BusinessesController {
     return this.businessesService.getPopularBusinesses(limit ? Number(limit) : 10);
   }
 
+  // Data-retrieval endpoints for the FE's dynamic sitemap generator (and
+  // reusable for category/city filter UI). Must stay declared before
+  // `businesses/:id` below, or that catch-all would shadow them.
+  @Get('businesses/sitemap')
+  async getSitemap() {
+    return this.businessesService.getSitemapBusinesses();
+  }
+
+  @Get('businesses/categories')
+  async getCategories() {
+    return this.businessesService.getCategoryFacets();
+  }
+
+  @Get('businesses/cities')
+  async getCities() {
+    return this.businessesService.getCityFacets();
+  }
+
   @Get('businesses/:id')
   async findOne(@Param('id') id: string) {
     return this.businessesService.findOne(id);
