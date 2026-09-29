@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class SyncBusinessesDto {
   @IsString()
@@ -8,4 +9,10 @@ export class SyncBusinessesDto {
   @IsString()
   @IsNotEmpty({ message: 'Lokasi pencarian wajib diisi' })
   location: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number = 100;
 }

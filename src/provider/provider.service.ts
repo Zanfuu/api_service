@@ -5,11 +5,10 @@ import { NormalizedGeoapifyBusiness } from './interfaces/normalized-geoapify-bus
 @Injectable()
 export class ProviderService {
   private readonly logger = new Logger(ProviderService.name);
-  private readonly baseUrl = 'https://api.geoapify.com/v2/places';
 
   constructor(private readonly configService: ConfigService) {}
 
-  async searchBusinesses(keyword: string, location: string): Promise<NormalizedGeoapifyBusiness[]> {
+  async searchBusinesses(keyword: string, location: string, limit: number = 100): Promise<NormalizedGeoapifyBusiness[]> {
     const apiKey = this.configService.get<string>('GEOAPIFY_API_KEY');
 
     if (!apiKey) {
@@ -18,6 +17,7 @@ export class ProviderService {
     }
 
     const featuresMap = new Map<string, any>();
+    const fetchLimit = Math.max(limit, 100);
 
     try {
       // 1. Geocode location untuk mendapatkan place_id area
@@ -28,8 +28,8 @@ export class ProviderService {
         const locPlaceId = locData?.features?.[0]?.properties?.place_id;
 
         if (locPlaceId) {
-          // Query Places API v2 dengan filter place
-          const placesUrl = `https://api.geoapify.com/v2/places?categories=commercial,catering,service,accommodation,rental,leisure,office&filter=place:${locPlaceId}&text=${encodeURIComponent(keyword)}&limit=50&apiKey=${apiKey}`;
+          // Query Places API v2 dengan limit 100
+          const placesUrl = `https://api.geoapify.com/v2/places?categories=commercial,catering,service,accommodation,rental,leisure,office&filter=place:${locPlaceId}&text=${encodeURIComponent(keyword)}&limit=${fetchLimit}&apiKey=${apiKey}`;
           const placesRes = await fetch(placesUrl);
           if (placesRes.ok) {
             const placesData = await placesRes.json();
@@ -44,8 +44,8 @@ export class ProviderService {
         }
       }
 
-      // 2. Query Geocode Search API sebagai fallback & pengaya data spesifik
-      const searchUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(`${keyword} ${location}`)}&limit=50&apiKey=${apiKey}`;
+      // 2. Query Geocode Search API dengan limit 100
+      const searchUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(`${keyword} ${location}`)}&limit=${fetchLimit}&apiKey=${apiKey}`;
       const searchRes = await fetch(searchUrl);
       if (searchRes.ok) {
         const searchData = await searchRes.json();
@@ -58,7 +58,27 @@ export class ProviderService {
         }
       }
 
-      const allFeatures = Array.from(featuresMap.values());
+      // 3. Fallback/Multi-category expansion jika jumlah masih kurang dari target limit
+      if (featuresMap.size < fetchLimit) {
+        const categoryKeywords = ['hotel', 'restaurant', 'cafe', 'rental', 'shop', 'service', 'market'];
+        for (const catKw of categoryKeywords) {
+          if (featuresMap.size >= fetchLimit) break;
+          const extraUrl = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(`${catKw} ${location}`)}&limit=${fetchLimit}&apiKey=${apiKey}`;
+          const extraRes = await fetch(extraUrl);
+          if (extraRes.ok) {
+            const extraData = await extraRes.json();
+            const extraFeatures = extraData?.features || [];
+            for (const f of extraFeatures) {
+              const id = f.properties?.place_id || f.properties?.name;
+              if (id && !featuresMap.has(id)) {
+                featuresMap.set(id, f);
+              }
+            }
+          }
+        }
+      }
+
+      const allFeatures = Array.from(featuresMap.values()).slice(0, fetchLimit);
       this.logger.log(`Geoapify Sync: Berhasil menemukan ${allFeatures.length} bisnis untuk keyword "${keyword}" di "${location}"`);
 
       return allFeatures.map((feature: any) => this.normalizeBusiness(feature));

@@ -32,8 +32,8 @@ export class BusinessesService {
   async syncBusinesses(dto: SyncBusinessesDto) {
     this.logger.log(`Memulai Sync Business dari Provider dengan Keyword: "${dto.keyword}", Location: "${dto.location}"`);
 
-    // 1. Ambil data dari provider eksternal (Geoapify)
-    const normalizedItems = await this.providerService.searchBusinesses(dto.keyword, dto.location);
+    const limit = dto.limit || 100;
+    const normalizedItems = await this.providerService.searchBusinesses(dto.keyword, dto.location, limit);
     const fetched = normalizedItems.length;
 
     let inserted = 0;
@@ -152,9 +152,10 @@ export class BusinessesService {
     const queryBuilder = this.businessRepository.createQueryBuilder('b');
 
     if (query.search) {
-      queryBuilder.andWhere('(b.name ILIKE :search OR b.address ILIKE :search)', {
-        search: `%${query.search}%`,
-      });
+      queryBuilder.andWhere(
+        '(b.name ILIKE :search OR b.address ILIKE :search OR b.category ILIKE :search OR b.slug ILIKE :search OR b.categories::text ILIKE :search)',
+        { search: `%${query.search}%` },
+      );
     }
 
     if (query.city) {
