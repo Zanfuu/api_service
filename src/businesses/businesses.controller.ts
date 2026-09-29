@@ -145,6 +145,11 @@ export class BusinessesController {
     return this.businessesService.getPublicProfile(slug);
   }
 
+  @Get('businesses/popular')
+  async getPopular(@Query('limit') limit?: number) {
+    return this.businessesService.getPopularBusinesses(limit ? Number(limit) : 10);
+  }
+
   @Get('businesses/:id')
   async findOne(@Param('id') id: string) {
     return this.businessesService.findOne(id);

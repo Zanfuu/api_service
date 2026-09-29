@@ -199,6 +199,38 @@ export class BusinessesService {
     };
   }
 
+  async getPopularBusinesses(limit: number = 10) {
+    const take = limit > 50 ? 50 : limit;
+
+    const businesses = await this.businessRepository
+      .createQueryBuilder('b')
+      .where('b.status = :status', { status: BusinessStatus.ACTIVE })
+      .orderBy('COALESCE(b.averageRating, b.externalRating, 0)', 'DESC')
+      .addOrderBy('COALESCE(b.reviewCount, b.externalReviewsCount, 0)', 'DESC')
+      .take(take)
+      .getMany();
+
+    return {
+      success: true,
+      message: 'Berhasil mengambil daftar bisnis populer',
+      data: businesses.map((b) => ({
+        id: b.id,
+        name: b.name,
+        slug: b.slug,
+        address: b.address,
+        city: b.city,
+        province: b.province,
+        category: b.category,
+        rating: b.averageRating ? Number(b.averageRating) : (b.externalRating ? Number(b.externalRating) : 0),
+        reviews_count: (b.reviewCount && b.reviewCount > 0) ? b.reviewCount : (b.externalReviewsCount ?? 0),
+        logo_url: b.logoUrl,
+        cover_url: b.coverUrl,
+        is_claimed: b.isClaimed,
+        status: b.status,
+      })),
+    };
+  }
+
   async getMyBusinesses(userId: string) {
     const memberships = await this.memberRepository.find({
       where: { userId },
